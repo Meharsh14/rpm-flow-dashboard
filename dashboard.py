@@ -31,16 +31,25 @@ col2.button("⏹️ Stop Simulation", on_click=stop_stream)
 # --- Tabs ---
 tab1, tab2 = st.tabs(["📊 Live Data", "💧 Water Volume"])
 
+# --- Graph placeholders ---
+if "chart_placeholder" not in st.session_state:
+    st.session_state.chart_placeholder = tab1.empty()
+if "metric_top" not in st.session_state:
+    st.session_state.metric_top = tab1.empty()
+if "metric_bottom" not in st.session_state:
+    st.session_state.metric_bottom = tab1.empty()
+if "volume_placeholder" not in st.session_state:
+    st.session_state.volume_placeholder = tab2.empty()
+
 # Simulation loop
 while st.session_state.run:
     rpm = random.randint(500, 1500)  # fake RPM
     flow = round(random.uniform(1.0, 10.0), 2)  # fake L/min
-    volume = 0
 
+    # Calculate volume
     if not st.session_state.data.empty:
-        # assume 1 second interval => convert flow L/min → L/sec
         last_volume = st.session_state.data["Volume"].iloc[-1]
-        volume = last_volume + (flow / 60.0)  # add litres per second
+        volume = last_volume + (flow / 60.0)  # L/sec
     else:
         volume = flow / 60.0
 
@@ -52,16 +61,23 @@ while st.session_state.run:
 
     # --- Tab 1: Live Flow & RPM ---
     with tab1:
-        colA, colB = st.columns(2)
-        colA.metric("💧 Flow Rate (L/min)", flow)
-        colB.metric("🔄 RPM", rpm)
+        # Display metrics above graph
+        st.session_state.metric_top.metric("💧 Flow Rate (L/min)", flow)
+        st.session_state.metric_top.metric("🔄 RPM", rpm)
 
-        st.line_chart(st.session_state.data.set_index("Timestamp")[["RPM", "Flow"]].tail(50))
+        # Combined line chart for RPM & Flow
+        st.session_state.chart_placeholder.line_chart(
+            st.session_state.data.set_index("Timestamp")[["RPM", "Flow"]].tail(50)
+        )
+
+        # Display metrics below graph
+        st.session_state.metric_bottom.metric("💧 Flow Rate (L/min)", flow)
+        st.session_state.metric_bottom.metric("🔄 RPM", rpm)
 
     # --- Tab 2: Water Volume ---
     with tab2:
         total_volume = round(st.session_state.data["Volume"].iloc[-1], 2)
-        st.metric("Total Water Consumed (L)", total_volume)
+        st.session_state.volume_placeholder.metric("Total Water Consumed (L)", total_volume)
         st.area_chart(st.session_state.data.set_index("Timestamp")[["Volume"]])
 
     time.sleep(1)
