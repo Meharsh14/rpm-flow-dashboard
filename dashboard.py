@@ -8,7 +8,7 @@ from io import BytesIO
 # --- Config ---
 st.set_page_config(page_title="RPM Dashboard", layout="wide")
 
-MQTT_BROKER = "192.168.1.xxx"  # 🧠 Replace with your PC IP
+MQTT_BROKER = "10.217.118.7"  # 🧠 Replace with your PC IP
 MQTT_PORT = 1883
 MQTT_TOPIC = "ifb/rpmData"
 
@@ -86,3 +86,4 @@ if not st.session_state.run and not st.session_state.data.empty:
         file_name="rpm_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
