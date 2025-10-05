@@ -4,3 +4,4 @@ numpy
 openpyxl
 paho-mqtt
 matplotlib
+flask
