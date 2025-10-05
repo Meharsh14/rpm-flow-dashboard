@@ -1,76 +1,73 @@
 import streamlit as st
+import paho.mqtt.client as mqtt
 import pandas as pd
 import time
-import paho.mqtt.client as mqtt
 from io import BytesIO
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="RPM & Flow Meter Dashboard", layout="wide")
+st.set_page_config(page_title="Live RPM Dashboard", layout="wide")
 
-MQTT_BROKER = "broker.hivemq.com"
-MQTT_PORT = 1883
-MQTT_TOPIC = "esp32/rpmFlow"
+st.title("🚀 Live Washing Machine RPM Monitor")
 
-if "data" not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=["Timestamp", "RPM", "Flow", "Volume"])
-if "run" not in st.session_state:
-    st.session_state.run = False
-if "volume" not in st.session_state:
-    st.session_state.volume = 0.0
+mqtt_status = st.empty()
+rpm_display = st.empty()
+chart_area = st.empty()
+placeholder = st.empty()
+
+start_btn = st.button("Start Simulation")
+stop_btn = st.button("Stop Simulation")
+
+data = []
+is_running = False
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        st.session_state.mqtt_status = "✅ Connected"
-        client.subscribe(MQTT_TOPIC)
+        mqtt_status.success("✅ Connected to MQTT Broker")
+        client.subscribe("washingmachine/rpm")
     else:
-        st.session_state.mqtt_status = f"❌ Failed (rc={rc})"
+        mqtt_status.error("❌ Failed to connect, return code %d" % rc)
 
 def on_message(client, userdata, msg):
-    try:
-        payload = msg.payload.decode()
-        data = payload.replace('{"data":"', '').replace('"}', '')
-        rpm, flow = map(float, data.split(","))
-        st.session_state.volume += (flow / 60.0)
-
-        new_row = {"Timestamp": pd.Timestamp.now(), "RPM": rpm, "Flow": flow, "Volume": st.session_state.volume}
-        st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_row])], ignore_index=True)
-    except Exception as e:
-        print("Parse error:", e)
+    global data, is_running
+    if is_running:
+        try:
+            rpm = float(msg.payload.decode())
+            data.append({"Time": time.strftime("%H:%M:%S"), "RPM": rpm})
+            rpm_display.metric("Current RPM", f"{rpm:.2f}")
+            df = pd.DataFrame(data)
+            chart_area.line_chart(df.set_index("Time"))
+        except:
+            pass
 
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
-st.title("🔄 RPM & Flow Live Dashboard")
-st.write(f"**MQTT Status:** {st.session_state.get('mqtt_status', '🔄 Connecting...')}")
+try:
+    client.connect("10.217.118.7", 1883, 60)
+    mqtt_status.info("🔄 Connecting to MQTT broker...")
+except:
+    mqtt_status.error("⚠️ Unable to connect to MQTT broker.")
 
-col1, col2 = st.columns(2)
-col1.button("▶️ Start", on_click=lambda: client.loop_start() or setattr(st.session_state, "run", True))
-col2.button("⏹ Stop", on_click=lambda: client.loop_stop() or setattr(st.session_state, "run", False))
+if start_btn:
+    is_running = True
+    st.toast("Started fetching live data!")
+if stop_btn:
+    is_running = False
+    st.toast("Stopped fetching data!")
 
-metric = st.empty()
-chart = st.empty()
+client.loop_start()
 
-if st.session_state.run:
-    while st.session_state.run:
-        if not st.session_state.data.empty:
-            latest = st.session_state.data.iloc[-1]
-            with metric.container():
-                c1, c2, c3 = st.columns(3)
-                c1.metric("RPM", int(latest["RPM"]))
-                c2.metric("Flow (L/min)", latest["Flow"])
-                c3.metric("Total Volume (L)", round(latest["Volume"], 2))
-
-            chart.line_chart(st.session_state.data.set_index("Timestamp")[["RPM", "Flow"]].tail(50))
-        time.sleep(1)
-
-if not st.session_state.data.empty:
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        st.session_state.data.to_excel(writer, index=False, sheet_name="Data")
-    st.download_button(
-        label="📥 Download Excel",
-        data=buffer,
-        file_name="rpm_flow_data.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+if not is_running:
+    if len(data) > 0:
+        df = pd.DataFrame(data)
+        output = BytesIO()
+        df.to_excel(output, index=False)
+        st.download_button(
+            label="📊 Download Data as Excel",
+            data=output.getvalue(),
+            file_name="rpm_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    else:
+        placeholder.warning("No data to save yet.")
