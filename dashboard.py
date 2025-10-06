@@ -1,40 +1,48 @@
 import streamlit as st
-import pandas as pd
-import time
 import requests
+import time
+import pandas as pd
+from datetime import datetime
 
-# Firebase Realtime Database URL
-FIREBASE_URL = "https://console.firebase.google.com/project/rpm-flow-dashboard/database/rpm-flow-dashboard-default-rtdb/data/~2F"
+st.set_page_config(page_title="RPM & Flow Dashboard", layout="wide")
 
-if "data" not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=["Timestamp", "RPM", "Flow"])
+st.title("🌀 Real-Time RPM & Flow Dashboard")
 
-st.title("RPM & Flow Dashboard (Firebase)")
+FIREBASE_URL = "https://your-project-id.firebaseio.com/machine_data.json"
+
+placeholder = st.empty()
+data_log = []
 
 start = st.button("▶️ Start Simulation")
-stop = st.button("⏹ Stop Simulation")
+stop = st.button("⏹️ Stop Simulation")
 
-running = True if start else False
+running = False
+
+if start:
+    running = True
+
+if stop:
+    running = False
 
 while running:
     try:
-        rpm = requests.get(FIREBASE_URL + "rpm.json").json()
-        flow = requests.get(FIREBASE_URL + "flow.json").json()
-        
-        new_row = {
-            "Timestamp": pd.Timestamp.now(),
-            "RPM": rpm,
-            "Flow": flow,
-        }
-        st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([new_row])], ignore_index=True)
+        response = requests.get(FIREBASE_URL)
+        if response.status_code == 200:
+            data = response.json()
+            rpm = data.get("rpm", 0)
+            flow = data.get("flow", 0.0)
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            data_log.append({"Time": timestamp, "RPM": rpm, "Flow": flow})
 
-        st.line_chart(st.session_state.data.set_index("Timestamp")[["RPM", "Flow"]].tail(50))
-        st.write(st.session_state.data.tail(5))
-        
+            df = pd.DataFrame(data_log)
+            placeholder.line_chart(df.set_index("Time"))
+
+            st.metric("RPM", rpm)
+            st.metric("Flow (L/min)", flow)
+
+            time.sleep(2)
+        else:
+            st.error("Error fetching data from Firebase")
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
-
-    time.sleep(1)
-    
-    if stop:
-        running = False
+        st.error(f"Exception: {e}")
+        time.sleep(2)
