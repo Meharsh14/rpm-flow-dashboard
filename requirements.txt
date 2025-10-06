@@ -5,3 +5,4 @@ openpyxl
 paho-mqtt
 matplotlib
 flask
+firebase_admin
