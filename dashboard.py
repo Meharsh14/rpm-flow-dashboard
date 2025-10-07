@@ -4,7 +4,6 @@ from firebase_admin import credentials, db
 import json, os, time
 import pandas as pd
 import plotly.express as px
-from io import BytesIO
 
 # ------------------------------
 # Firebase Initialization
@@ -14,18 +13,13 @@ def init_firebase():
     db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
     cred = None
 
-    # Streamlit secrets (cloud)
     if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
         firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
         cred = credentials.Certificate(firebase_config)
-
-    # Local JSON file
     elif os.path.exists("serviceAccountKey.json"):
         cred = credentials.Certificate("serviceAccountKey.json")
-
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-
     else:
         st.error("❌ No Firebase credentials found. Upload `serviceAccountKey.json` or set secrets.")
         st.stop()
@@ -49,9 +43,6 @@ st.caption("Live data fetched from Firebase Realtime Database")
 # ------------------------------
 # Session state initialization
 # ------------------------------
-if "running" not in st.session_state:
-    st.session_state.running = True
-
 if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0.0
     st.session_state.prev_time = time.time()
@@ -59,10 +50,13 @@ if "total_volume" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = pd.DataFrame(columns=["Time", "RPM", "FlowRate", "TotalVolume"])
 
+if "running" not in st.session_state:
+    st.session_state.running = True
+
 # ------------------------------
 # Control buttons
 # ------------------------------
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("▶️ Start"):
         st.session_state.running = True
@@ -74,9 +68,6 @@ with col3:
         output = BytesIO()
         st.session_state.history.to_excel(output, index=False)
         st.download_button("Download Data", data=output.getvalue(), file_name="sensor_data.xlsx")
-with col4:
-    if st.button("🔄 Update Chart"):
-        st.session_state.update_chart = True
 
 # ------------------------------
 # Placeholders for metrics
@@ -90,6 +81,12 @@ volume_placeholder = st.empty()
 # ------------------------------
 with st.expander("📈 Live Chart", expanded=True):
     chart_placeholder = st.empty()
+
+# ------------------------------
+# Auto-refresh every 2 seconds
+# ------------------------------
+st_autorefresh = st.experimental_data_editor  # placeholder, no longer needed for scroll issue
+st_autorefresh = st.autorefresh(interval=2000, key="datarefresh")  # triggers rerun every 2s
 
 # ------------------------------
 # Fetch & display data
@@ -125,7 +122,7 @@ if st.session_state.running:
                 }])
             ], ignore_index=True)
 
-            # Update chart only if button clicked or first run
+            # Update chart
             fig = px.line(
                 st.session_state.history,
                 x="Time",
