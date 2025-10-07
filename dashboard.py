@@ -4,7 +4,6 @@ from firebase_admin import credentials, db
 import json, os, time
 import pandas as pd
 import plotly.express as px
-from io import BytesIO
 
 # ------------------------------
 # Firebase Initialization
@@ -69,9 +68,11 @@ with col2:
         st.session_state.running = False
 with col3:
     if st.button("💾 Download Excel"):
-        output = BytesIO()
+        output = pd.ExcelWriter("sensor_data.xlsx", engine="xlsxwriter")
         st.session_state.history.to_excel(output, index=False)
-        st.download_button("Download Data", data=output.getvalue(), file_name="sensor_data.xlsx")
+        output.save()
+        with open("sensor_data.xlsx", "rb") as f:
+            st.download_button("Download Data", f.read(), file_name="sensor_data.xlsx")
 
 # ------------------------------
 # Placeholders for metrics
@@ -87,15 +88,10 @@ with st.expander("📈 Live Chart", expanded=True):
     chart_placeholder = st.empty()
 
 # ------------------------------
-# Auto-refresh every 2 seconds
-# ------------------------------
-st.autorefresh(interval=2000, key="datarefresh")  # triggers rerun every 2 seconds
-
-# ------------------------------
 # Fetch & display data
 # ------------------------------
-if st.session_state.running:
-    try:
+try:
+    if st.session_state.running:
         ref = db.reference("sensorData")
         data = ref.get()
 
@@ -138,5 +134,11 @@ if st.session_state.running:
         else:
             st.warning("No data received yet from ESP32.")
 
-    except Exception as e:
-        st.error(f"Error fetching data: {e}")
+    # --- Auto-refresh ---
+    time.sleep(2)
+    st.experimental_rerun()
+
+except Exception as e:
+    st.error(f"Error fetching data: {e}")
+    time.sleep(5)
+    st.experimental_rerun()
