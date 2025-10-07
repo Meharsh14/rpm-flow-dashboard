@@ -4,6 +4,7 @@ from firebase_admin import credentials, db
 import json, os, time
 import pandas as pd
 import plotly.express as px
+from streamlit_autorefresh import st_autorefresh
 
 # ------------------------------
 # Firebase Initialization
@@ -88,6 +89,11 @@ with st.expander("📈 Live Chart", expanded=True):
     chart_placeholder = st.empty()
 
 # ------------------------------
+# Auto-refresh every 2 seconds
+# ------------------------------
+st_autorefresh(interval=2000, key="datarefresh")
+
+# ------------------------------
 # Fetch & display data
 # ------------------------------
 try:
@@ -134,11 +140,5 @@ try:
         else:
             st.warning("No data received yet from ESP32.")
 
-    # --- Auto-refresh ---
-    time.sleep(2)
-    st.experimental_rerun()
-
 except Exception as e:
     st.error(f"Error fetching data: {e}")
-    time.sleep(5)
-    st.experimental_rerun()
