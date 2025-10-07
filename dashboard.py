@@ -2,27 +2,29 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
 import json, os, time
-from streamlit_autorefresh import st_autorefresh  # For auto-refresh
+import pandas as pd
+from streamlit_autorefresh import st_autorefresh
+import plotly.express as px
+from io import BytesIO
 
 # ------------------------------
 # Firebase Initialization
 # ------------------------------
 @st.cache_resource
 def init_firebase():
-    """Initialize Firebase only once."""
     db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
     cred = None
 
-    # 1️⃣ Check Streamlit secrets
+    # Streamlit secrets (for cloud)
     if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
         firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
         cred = credentials.Certificate(firebase_config)
 
-    # 2️⃣ Else check local JSON file
+    # Local JSON file
     elif os.path.exists("serviceAccountKey.json"):
         cred = credentials.Certificate("serviceAccountKey.json")
 
-    # 3️⃣ Else check environment variable
+    # Env variable
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 
@@ -30,7 +32,6 @@ def init_firebase():
         st.error("❌ No Firebase credentials found. Upload `serviceAccountKey.json` or set secrets.")
         st.stop()
 
-    # Initialize Firebase app if not already done
     if not firebase_admin._apps:
         firebase_admin.initialize_app(cred, {"databaseURL": db_url})
 
@@ -53,42 +54,89 @@ st.caption("Live data fetched from Firebase Realtime Database")
 st_autorefresh(interval=2000, key="data_refresh")  # refresh dashboard every 2 sec
 
 # ------------------------------
+# Session state initialization
+# ------------------------------
+if "running" not in st.session_state:
+    st.session_state.running = True
+
+if "total_volume" not in st.session_state:
+    st.session_state.total_volume = 0.0
+    st.session_state.prev_time = time.time()
+
+if "history" not in st.session_state:
+    st.session_state.history = pd.DataFrame(columns=["Time", "RPM", "FlowRate", "TotalVolume"])
+
+# ------------------------------
+# Control buttons
+# ------------------------------
+col1, col2, col3 = st.columns(3)
+with col1:
+    if st.button("▶️ Start"):
+        st.session_state.running = True
+with col2:
+    if st.button("⏹ Stop"):
+        st.session_state.running = False
+with col3:
+    # Download Excel button
+    if st.button("💾 Download Excel"):
+        output = BytesIO()
+        st.session_state.history.to_excel(output, index=False)
+        st.download_button("Download Data", data=output.getvalue(), file_name="sensor_data.xlsx")
+
+# ------------------------------
 # Placeholders for metrics
 # ------------------------------
 rpm_placeholder = st.empty()
 flow_placeholder = st.empty()
 volume_placeholder = st.empty()
+chart_placeholder = st.empty()
 
 # ------------------------------
-# Session state for total volume
+# Fetch & display data
 # ------------------------------
-if "total_volume" not in st.session_state:
-    st.session_state.total_volume = 0.0
-    st.session_state.prev_time = time.time()
+if st.session_state.running:
+    try:
+        ref = db.reference("sensorData")
+        data = ref.get()
 
-# ------------------------------
-# Fetch data from Firebase
-# ------------------------------
-try:
-    ref = db.reference("sensorData")
-    data = ref.get()
+        if data:
+            rpm = data.get("RPM", 0)
+            flow = data.get("FlowRate", 0)
 
-    if data:
-        rpm = data.get("RPM", 0)
-        flow = data.get("FlowRate", 0)
+            # Calculate total volume
+            current_time = time.time()
+            elapsed = current_time - st.session_state.prev_time
+            st.session_state.total_volume += (flow / 60) * elapsed  # L/min -> L/s
+            st.session_state.prev_time = current_time
 
-        # Calculate total volume (L/min → L/s)
-        current_time = time.time()
-        elapsed = current_time - st.session_state.prev_time
-        st.session_state.total_volume += (flow / 60) * elapsed
-        st.session_state.prev_time = current_time
+            # Update metrics
+            rpm_placeholder.metric("Current RPM", f"{rpm} RPM")
+            flow_placeholder.metric("Flow Rate", f"{flow:.2f} L/min")
+            volume_placeholder.metric("Total Volume", f"{st.session_state.total_volume:.2f} L")
 
-        # Update metrics
-        rpm_placeholder.metric("Current RPM", f"{rpm} RPM")
-        flow_placeholder.metric("Flow Rate", f"{flow:.2f} L/min")
-        volume_placeholder.metric("Total Volume", f"{st.session_state.total_volume:.2f} L")
-    else:
-        st.warning("No data received yet from ESP32.")
+            # Append to history
+            st.session_state.history = pd.concat([
+                st.session_state.history,
+                pd.DataFrame([{
+                    "Time": pd.Timestamp.now(),
+                    "RPM": rpm,
+                    "FlowRate": flow,
+                    "TotalVolume": st.session_state.total_volume
+                }])
+            ], ignore_index=True)
 
-except Exception as e:
-    st.error(f"Error fetching data: {e}")
+            # Plot line chart
+            fig = px.line(
+                st.session_state.history,
+                x="Time",
+                y=["RPM", "FlowRate"],
+                labels={"value": "Value", "variable": "Parameter"},
+                title="Live RPM & Flow Rate"
+            )
+            chart_placeholder.plotly_chart(fig, use_container_width=True)
+
+        else:
+            st.warning("No data received yet from ESP32.")
+
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
