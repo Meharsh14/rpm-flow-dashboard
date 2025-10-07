@@ -4,6 +4,7 @@ from firebase_admin import credentials, db
 import json, os, time
 import pandas as pd
 import plotly.express as px
+from io import BytesIO
 
 # ------------------------------
 # Firebase Initialization
@@ -13,11 +14,14 @@ def init_firebase():
     db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
     cred = None
 
+    # Streamlit secrets (cloud)
     if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
         firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
         cred = credentials.Certificate(firebase_config)
+    # Local JSON file
     elif os.path.exists("serviceAccountKey.json"):
         cred = credentials.Certificate("serviceAccountKey.json")
+    # Environment variable
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
     else:
@@ -85,8 +89,7 @@ with st.expander("📈 Live Chart", expanded=True):
 # ------------------------------
 # Auto-refresh every 2 seconds
 # ------------------------------
-st_autorefresh = st.experimental_data_editor  # placeholder, no longer needed for scroll issue
-st_autorefresh = st.autorefresh(interval=2000, key="datarefresh")  # triggers rerun every 2s
+st.autorefresh(interval=2000, key="datarefresh")  # triggers rerun every 2 seconds
 
 # ------------------------------
 # Fetch & display data
