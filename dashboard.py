@@ -5,6 +5,7 @@ import json, os, time
 import pandas as pd
 import plotly.express as px
 from streamlit_autorefresh import st_autorefresh
+import io
 
 # ------------------------------
 # Firebase Initialization
@@ -68,12 +69,20 @@ with col2:
     if st.button("⏹ Stop"):
         st.session_state.running = False
 with col3:
+    # Download Excel button
     if st.button("💾 Download Excel"):
-        output = pd.ExcelWriter("sensor_data.xlsx", engine="xlsxwriter")
-        st.session_state.history.to_excel(output, index=False)
-        output.close()  # Corrected from save() to close()
-        with open("sensor_data.xlsx", "rb") as f:
-            st.download_button("Download Data", f.read(), file_name="sensor_data.xlsx")
+        # Create in-memory Excel file
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            st.session_state.history.to_excel(writer, index=False, sheet_name="SensorData")
+            writer.save()
+        output.seek(0)
+        st.download_button(
+            label="Download Data",
+            data=output,
+            file_name="sensor_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # ------------------------------
 # Placeholders for metrics
