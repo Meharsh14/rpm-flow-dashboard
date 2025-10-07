@@ -71,7 +71,7 @@ with col3:
     if st.button("💾 Download Excel"):
         output = pd.ExcelWriter("sensor_data.xlsx", engine="xlsxwriter")
         st.session_state.history.to_excel(output, index=False)
-        output.save()
+        output.close()  # Corrected from save() to close()
         with open("sensor_data.xlsx", "rb") as f:
             st.download_button("Download Data", f.read(), file_name="sensor_data.xlsx")
 
