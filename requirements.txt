@@ -1,9 +1,6 @@
 streamlit
+firebase-admin
+plotly
 pandas
-numpy
-openpyxl
-paho-mqtt
-matplotlib
-flask
-firebase_admin
 streamlit-autorefresh
+openpyxl
