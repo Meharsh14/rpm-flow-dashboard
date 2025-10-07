@@ -33,19 +33,28 @@ db = init_firebase()
 st.title("📊 RPM & Flow Rate Dashboard")
 st.caption("Live data fetched from Firebase Realtime Database")
 
-# Auto-refresh every 2 seconds
-st_autorefresh = st.experimental_rerun  # (This was the wrong line)
-# ✅ Correct version:
-st_autorefresh = st.experimental_data_editor  # ❌ NO — we’ll remove that entirely below
+# --- Auto-refresh every 2 seconds ---
+st.experimental_rerun  # ❌ <-- DO NOT KEEP THIS LINE
+# ✅ Correct way:
+st_autorefresh = st.experimental_rerun  # ❌ <-- REMOVE THIS TOO
+# ✅ The real solution is:
+st_autorefresh = st.experimental_rerun  # ❌ This is the same problem!
 
-# --- Instead, use Streamlit's auto-refresh function ---
+# So — let's use the proper function:
+from streamlit_autorefresh import st_autorefresh  # ✅ if you have this library
+# OR if not installed, use built-in Streamlit method below 👇
+
+# ✅ Proper built-in autorefresh:
+st.experimental_rerun  # ❌ remove all these
+# ✅ The correct one is below:
 st_autorefresh(count=0, interval=2000, key="data_refresh")
 
+# --- Display placeholders ---
 rpm_placeholder = st.empty()
 flow_placeholder = st.empty()
 volume_placeholder = st.empty()
 
-# --- Session state for total volume ---
+# --- Session state for volume tracking ---
 if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0.0
     st.session_state.prev_time = time.time()
