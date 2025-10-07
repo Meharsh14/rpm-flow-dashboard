@@ -7,7 +7,7 @@ import json, os, time
 def init_firebase():
     if not firebase_admin._apps:
         cred = None
-        db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
+        db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com"
 
         if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
             st.write("🔐 Loading Firebase credentials from Streamlit secrets...")
@@ -68,3 +68,4 @@ while True:
     except Exception as e:
         st.error(f"Error fetching data: {e}")
         time.sleep(5)
+
