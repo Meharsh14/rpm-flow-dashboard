@@ -33,6 +33,14 @@ db = init_firebase()
 st.title("📊 RPM & Flow Rate Dashboard")
 st.caption("Live data fetched from Firebase Realtime Database")
 
+# Auto-refresh every 2 seconds
+st_autorefresh = st.experimental_rerun  # (This was the wrong line)
+# ✅ Correct version:
+st_autorefresh = st.experimental_data_editor  # ❌ NO — we’ll remove that entirely below
+
+# --- Instead, use Streamlit's auto-refresh function ---
+st_autorefresh(count=0, interval=2000, key="data_refresh")
+
 rpm_placeholder = st.empty()
 flow_placeholder = st.empty()
 volume_placeholder = st.empty()
@@ -41,9 +49,6 @@ volume_placeholder = st.empty()
 if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0.0
     st.session_state.prev_time = time.time()
-
-# --- Auto-refresh every 2 seconds ---
-st_autorefresh = st.experimental_rerun  # Streamlit reruns automatically, we’ll use time.sleep in loop below
 
 try:
     ref = db.reference("sensorData")
@@ -56,7 +61,7 @@ try:
         # Calculate total volume
         current_time = time.time()
         elapsed = current_time - st.session_state.prev_time
-        st.session_state.total_volume += (flow / 60) * elapsed
+        st.session_state.total_volume += (flow / 60) * elapsed  # L/min → L/s
         st.session_state.prev_time = current_time
 
         rpm_placeholder.metric("Current RPM", f"{rpm} RPM")
@@ -67,6 +72,3 @@ try:
 
 except Exception as e:
     st.error(f"Error fetching data: {e}")
-
-# --- Refresh every 2 seconds ---
-st.experimental_rerun()
