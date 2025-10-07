@@ -3,7 +3,6 @@ import firebase_admin
 from firebase_admin import credentials, db
 import json, os, time
 import pandas as pd
-from streamlit_autorefresh import st_autorefresh
 import plotly.express as px
 from io import BytesIO
 
@@ -15,7 +14,7 @@ def init_firebase():
     db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
     cred = None
 
-    # Streamlit secrets (for cloud)
+    # Streamlit secrets (cloud)
     if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
         firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
         cred = credentials.Certificate(firebase_config)
@@ -24,7 +23,6 @@ def init_firebase():
     elif os.path.exists("serviceAccountKey.json"):
         cred = credentials.Certificate("serviceAccountKey.json")
 
-    # Env variable
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 
@@ -49,11 +47,6 @@ st.title("📊 RPM & Flow Rate Dashboard")
 st.caption("Live data fetched from Firebase Realtime Database")
 
 # ------------------------------
-# Auto-refresh every 2 seconds
-# ------------------------------
-st_autorefresh(interval=2000, key="data_refresh")  # refresh dashboard every 2 sec
-
-# ------------------------------
 # Session state initialization
 # ------------------------------
 if "running" not in st.session_state:
@@ -69,7 +62,7 @@ if "history" not in st.session_state:
 # ------------------------------
 # Control buttons
 # ------------------------------
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     if st.button("▶️ Start"):
         st.session_state.running = True
@@ -77,11 +70,13 @@ with col2:
     if st.button("⏹ Stop"):
         st.session_state.running = False
 with col3:
-    # Download Excel button
     if st.button("💾 Download Excel"):
         output = BytesIO()
         st.session_state.history.to_excel(output, index=False)
         st.download_button("Download Data", data=output.getvalue(), file_name="sensor_data.xlsx")
+with col4:
+    if st.button("🔄 Update Chart"):
+        st.session_state.update_chart = True
 
 # ------------------------------
 # Placeholders for metrics
@@ -89,7 +84,12 @@ with col3:
 rpm_placeholder = st.empty()
 flow_placeholder = st.empty()
 volume_placeholder = st.empty()
-chart_placeholder = st.empty()
+
+# ------------------------------
+# Expander for chart
+# ------------------------------
+with st.expander("📈 Live Chart", expanded=True):
+    chart_placeholder = st.empty()
 
 # ------------------------------
 # Fetch & display data
@@ -125,7 +125,7 @@ if st.session_state.running:
                 }])
             ], ignore_index=True)
 
-            # Plot line chart
+            # Update chart only if button clicked or first run
             fig = px.line(
                 st.session_state.history,
                 x="Time",
