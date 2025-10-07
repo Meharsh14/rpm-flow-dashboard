@@ -4,4 +4,5 @@ plotly
 pandas
 streamlit-autorefresh
 openpyxl
-xlwriter
+xlsxwriter
+
