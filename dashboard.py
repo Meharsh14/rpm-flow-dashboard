@@ -2,11 +2,11 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
 import json, os, time
+from streamlit_autorefresh import st_autorefresh  # new library for auto-refresh
 
 # --- Firebase Initialization ---
 @st.cache_resource
 def init_firebase():
-    """Initialize Firebase only once."""
     db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
     cred = None
 
@@ -34,20 +34,7 @@ st.title("📊 RPM & Flow Rate Dashboard")
 st.caption("Live data fetched from Firebase Realtime Database")
 
 # --- Auto-refresh every 2 seconds ---
-st.experimental_rerun  # ❌ <-- DO NOT KEEP THIS LINE
-# ✅ Correct way:
-st_autorefresh = st.experimental_rerun  # ❌ <-- REMOVE THIS TOO
-# ✅ The real solution is:
-st_autorefresh = st.experimental_rerun  # ❌ This is the same problem!
-
-# So — let's use the proper function:
-from streamlit_autorefresh import st_autorefresh  # ✅ if you have this library
-# OR if not installed, use built-in Streamlit method below 👇
-
-# ✅ Proper built-in autorefresh:
-st.experimental_rerun  # ❌ remove all these
-# ✅ The correct one is below:
-st_autorefresh(count=0, interval=2000, key="data_refresh")
+st_autorefresh(interval=2000, key="data_refresh")  # refresh dashboard every 2 sec
 
 # --- Display placeholders ---
 rpm_placeholder = st.empty()
@@ -59,6 +46,7 @@ if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0.0
     st.session_state.prev_time = time.time()
 
+# --- Fetch data from Firebase ---
 try:
     ref = db.reference("sensorData")
     data = ref.get()
