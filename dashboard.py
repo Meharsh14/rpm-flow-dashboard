@@ -15,24 +15,27 @@ def init_firebase():
     db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
     cred = None
 
-    # Streamlit secrets (cloud)
+    # Streamlit secrets (for Streamlit Cloud)
     if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
         firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
         cred = credentials.Certificate(firebase_config)
-    # Local JSON file
+
+    # Local JSON file (for development)
     elif os.path.exists("serviceAccountKey.json"):
         cred = credentials.Certificate("serviceAccountKey.json")
-    # Environment variable
+
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+
     else:
-        st.error("❌ No Firebase credentials found. Upload `serviceAccountKey.json` or set secrets.")
+        st.error("❌ No Firebase credentials found. Upload `serviceAccountKey.json` or add secrets.")
         st.stop()
 
     if not firebase_admin._apps:
         firebase_admin.initialize_app(cred, {"databaseURL": db_url})
 
     return db
+
 
 # ------------------------------
 # Initialize Firebase
@@ -42,11 +45,12 @@ db = init_firebase()
 # ------------------------------
 # Streamlit UI
 # ------------------------------
+st.set_page_config(page_title="RPM & Flow Dashboard", layout="wide")
 st.title("📊 RPM & Flow Rate Dashboard")
 st.caption("Live data fetched from Firebase Realtime Database")
 
 # ------------------------------
-# Session state initialization
+# Session State Setup
 # ------------------------------
 if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0.0
@@ -59,49 +63,53 @@ if "running" not in st.session_state:
     st.session_state.running = True
 
 # ------------------------------
-# Control buttons
+# Control Buttons
 # ------------------------------
-col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns([1, 1, 2])
+
 with col1:
     if st.button("▶️ Start"):
         st.session_state.running = True
+
 with col2:
     if st.button("⏹ Stop"):
         st.session_state.running = False
+
 with col3:
-    # Download Excel button
-    if st.button("💾 Prepare Excel"):
+    if not st.session_state.history.empty:
+        # Create Excel file in memory
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             st.session_state.history.to_excel(writer, index=False, sheet_name="SensorData")
         output.seek(0)
+
         st.download_button(
-            label="⬇️ Download Excel File",
+            label="💾 Download Excel File",
             data=output,
             file_name="sensor_data.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
 # ------------------------------
-# Placeholders for metrics
+# Metric Placeholders
 # ------------------------------
 rpm_placeholder = st.empty()
 flow_placeholder = st.empty()
 volume_placeholder = st.empty()
 
 # ------------------------------
-# Expander for chart
+# Chart Section
 # ------------------------------
-with st.expander("📈 Live Chart", expanded=True):
+with st.expander("📈 Live Graph", expanded=True):
     chart_placeholder = st.empty()
 
 # ------------------------------
 # Auto-refresh every 2 seconds
 # ------------------------------
-st_autorefresh(interval=2000, key="datarefresh")
+st_autorefresh(interval=2000, key="data_refresh")
 
 # ------------------------------
-# Fetch & display data
+# Fetch and Display Data
 # ------------------------------
 try:
     if st.session_state.running:
@@ -112,39 +120,46 @@ try:
             rpm = data.get("RPM", 0)
             flow = data.get("FlowRate", 0)
 
-            # Calculate total volume
+            # Calculate total volume (L/min → L/s)
             current_time = time.time()
             elapsed = current_time - st.session_state.prev_time
-            st.session_state.total_volume += (flow / 60) * elapsed  # L/min → L/s
+            st.session_state.total_volume += (flow / 60) * elapsed
             st.session_state.prev_time = current_time
 
-            # Update metrics
-            rpm_placeholder.metric("Current RPM", f"{rpm} RPM")
+            # Display live metrics
+            rpm_placeholder.metric("Current RPM", f"{rpm}")
             flow_placeholder.metric("Flow Rate", f"{flow:.2f} L/min")
             volume_placeholder.metric("Total Volume", f"{st.session_state.total_volume:.2f} L")
 
-            # Append to history
-            st.session_state.history = pd.concat([
-                st.session_state.history,
-                pd.DataFrame([{
-                    "Time": pd.Timestamp.now(),
-                    "RPM": rpm,
-                    "FlowRate": flow,
-                    "TotalVolume": st.session_state.total_volume
-                }])
-            ], ignore_index=True)
+            # Append new data
+            st.session_state.history = pd.concat(
+                [
+                    st.session_state.history,
+                    pd.DataFrame(
+                        [
+                            {
+                                "Time": pd.Timestamp.now(),
+                                "RPM": rpm,
+                                "FlowRate": flow,
+                                "TotalVolume": st.session_state.total_volume,
+                            }
+                        ]
+                    ),
+                ],
+                ignore_index=True,
+            )
 
-            # Keep last 100 points for smoother graph
-            if len(st.session_state.history) > 100:
-                st.session_state.history = st.session_state.history.tail(100)
+            # Limit data for smoother plotting
+            if len(st.session_state.history) > 200:
+                st.session_state.history = st.session_state.history.tail(200)
 
-            # Update chart
+            # Plot graph
             fig = px.line(
                 st.session_state.history,
                 x="Time",
                 y=["RPM", "FlowRate"],
                 labels={"value": "Value", "variable": "Parameter"},
-                title="Live RPM & Flow Rate"
+                title="Live RPM & Flow Rate",
             )
             chart_placeholder.plotly_chart(fig, use_container_width=True)
 
