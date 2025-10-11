@@ -35,7 +35,7 @@ with col_btn2:
     if st.button("⏸️ Stop"):
         st.session_state.running = False
 with col_btn3:
-    st.write("")  # just spacing
+    st.write("")  # spacing
 
 # --- Only Update if Running ---
 if st.session_state.running:
@@ -47,7 +47,7 @@ if st.session_state.running:
     )
     st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
     time.sleep(2)
-    st.experimental_rerun()
+    st.rerun()
 else:
     # Display last values if available
     if not st.session_state.data.empty:
@@ -116,6 +116,7 @@ st.metric("💧 Total Volume (L)", round(total_volume, 2))
 excel_buffer = BytesIO()
 with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
     st.session_state.data.to_excel(writer, index=False, sheet_name="Sensor Data")
+
 excel_data = excel_buffer.getvalue()
 
 st.download_button(
