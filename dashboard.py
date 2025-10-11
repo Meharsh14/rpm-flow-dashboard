@@ -15,26 +15,50 @@ if "data" not in st.session_state:
     st.session_state.data = pd.DataFrame(columns=["Timestamp", "RPM", "Flow Rate (L/min)", "Volume (L)"])
 if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0
+if "running" not in st.session_state:
+    st.session_state.running = False
 
-# --- Generate Random Data ---
+# --- Function to Generate Random Data ---
 def generate_data():
     rpm = random.randint(400, 1200)
     flow_rate = round(random.uniform(1.0, 10.0), 2)
-    volume_increment = flow_rate / 30  # assuming 2-second interval
+    volume_increment = flow_rate / 30  # simulate per 2-second update
     st.session_state.total_volume += volume_increment
     return rpm, flow_rate, st.session_state.total_volume
 
-# --- Live Update ---
-rpm, flow_rate, total_volume = generate_data()
+# --- Control Buttons ---
+col_btn1, col_btn2, col_btn3 = st.columns(3)
+with col_btn1:
+    if st.button("▶️ Start"):
+        st.session_state.running = True
+with col_btn2:
+    if st.button("⏸️ Stop"):
+        st.session_state.running = False
+with col_btn3:
+    st.write("")  # just spacing
 
-# --- Append Data ---
-new_row = pd.DataFrame(
-    [[time.strftime("%H:%M:%S"), rpm, flow_rate, round(total_volume, 2)]],
-    columns=["Timestamp", "RPM", "Flow Rate (L/min)", "Volume (L)"]
-)
-st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+# --- Only Update if Running ---
+if st.session_state.running:
+    rpm, flow_rate, total_volume = generate_data()
 
-# --- Layout (3 Columns for Gauges) ---
+    new_row = pd.DataFrame(
+        [[time.strftime("%H:%M:%S"), rpm, flow_rate, round(total_volume, 2)]],
+        columns=["Timestamp", "RPM", "Flow Rate (L/min)", "Volume (L)"]
+    )
+    st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+    time.sleep(2)
+    st.experimental_rerun()
+else:
+    # Display last values if available
+    if not st.session_state.data.empty:
+        last_row = st.session_state.data.iloc[-1]
+        rpm = last_row["RPM"]
+        flow_rate = last_row["Flow Rate (L/min)"]
+        total_volume = last_row["Volume (L)"]
+    else:
+        rpm, flow_rate, total_volume = 0, 0, 0
+
+# --- Gauges Layout ---
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -81,8 +105,9 @@ with col3:
 
 # --- Graph Section ---
 st.subheader("📈 Live RPM & Flow Rate Graph")
-chart_data = st.session_state.data.set_index("Timestamp")
-st.line_chart(chart_data[["RPM", "Flow Rate (L/min)"]])
+if not st.session_state.data.empty:
+    chart_data = st.session_state.data.set_index("Timestamp")
+    st.line_chart(chart_data[["RPM", "Flow Rate (L/min)"]])
 
 # --- Display Total Volume ---
 st.metric("💧 Total Volume (L)", round(total_volume, 2))
@@ -98,12 +123,4 @@ st.download_button(
     data=excel_data,
     file_name="rpm_flow_data.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-# --- Auto Refresh Every 2 Seconds ---
-st.markdown(
-    """
-    <meta http-equiv="refresh" content="2">
-    """,
-    unsafe_allow_html=True
 )
