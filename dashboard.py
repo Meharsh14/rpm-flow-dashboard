@@ -70,15 +70,13 @@ with col2:
         st.session_state.running = False
 with col3:
     # Download Excel button
-    if st.button("💾 Download Excel"):
-        # Create in-memory Excel file
+    if st.button("💾 Prepare Excel"):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             st.session_state.history.to_excel(writer, index=False, sheet_name="SensorData")
-            writer.save()
         output.seek(0)
         st.download_button(
-            label="Download Data",
+            label="⬇️ Download Excel File",
             data=output,
             file_name="sensor_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -117,7 +115,7 @@ try:
             # Calculate total volume
             current_time = time.time()
             elapsed = current_time - st.session_state.prev_time
-            st.session_state.total_volume += (flow / 60) * elapsed  # L/min -> L/s
+            st.session_state.total_volume += (flow / 60) * elapsed  # L/min → L/s
             st.session_state.prev_time = current_time
 
             # Update metrics
@@ -135,6 +133,10 @@ try:
                     "TotalVolume": st.session_state.total_volume
                 }])
             ], ignore_index=True)
+
+            # Keep last 100 points for smoother graph
+            if len(st.session_state.history) > 100:
+                st.session_state.history = st.session_state.history.tail(100)
 
             # Update chart
             fig = px.line(
