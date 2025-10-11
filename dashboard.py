@@ -1,170 +1,109 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, db
-import json, os, time
 import pandas as pd
-import plotly.express as px
-from streamlit_autorefresh import st_autorefresh
-import io
+import random
+import time
+from io import BytesIO
+import plotly.graph_objects as go
 
-# ------------------------------
-# Firebase Initialization
-# ------------------------------
-@st.cache_resource
-def init_firebase():
-    db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
-    cred = None
+# --- Streamlit Page Setup ---
+st.set_page_config(page_title="RPM & Flow Meter Dashboard", layout="wide")
 
-    # Streamlit secrets (for Streamlit Cloud)
-    if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
-        firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
-        cred = credentials.Certificate(firebase_config)
+st.title("🌀 Real-Time RPM & Flow Rate Dashboard")
 
-    # Local JSON file (for development)
-    elif os.path.exists("serviceAccountKey.json"):
-        cred = credentials.Certificate("serviceAccountKey.json")
-
-    elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-
-    else:
-        st.error("❌ No Firebase credentials found. Upload `serviceAccountKey.json` or add secrets.")
-        st.stop()
-
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(cred, {"databaseURL": db_url})
-
-    return db
-
-
-# ------------------------------
-# Initialize Firebase
-# ------------------------------
-db = init_firebase()
-
-# ------------------------------
-# Streamlit UI
-# ------------------------------
-st.set_page_config(page_title="RPM & Flow Dashboard", layout="wide")
-st.title("📊 RPM & Flow Rate Dashboard")
-st.caption("Live data fetched from Firebase Realtime Database")
-
-# ------------------------------
-# Session State Setup
-# ------------------------------
+# --- Initialize Session State ---
+if "data" not in st.session_state:
+    st.session_state.data = pd.DataFrame(columns=["Timestamp", "RPM", "Flow Rate (L/min)", "Volume (L)"])
 if "total_volume" not in st.session_state:
-    st.session_state.total_volume = 0.0
-    st.session_state.prev_time = time.time()
+    st.session_state.total_volume = 0
 
-if "history" not in st.session_state:
-    st.session_state.history = pd.DataFrame(columns=["Time", "RPM", "FlowRate", "TotalVolume"])
+# --- Generate Random Data ---
+def generate_data():
+    rpm = random.randint(400, 1200)
+    flow_rate = round(random.uniform(1.0, 10.0), 2)
+    volume_increment = flow_rate / 30  # assuming 2-second interval
+    st.session_state.total_volume += volume_increment
+    return rpm, flow_rate, st.session_state.total_volume
 
-if "running" not in st.session_state:
-    st.session_state.running = True
+# --- Live Update ---
+rpm, flow_rate, total_volume = generate_data()
 
-# ------------------------------
-# Control Buttons
-# ------------------------------
-col1, col2, col3 = st.columns([1, 1, 2])
+# --- Append Data ---
+new_row = pd.DataFrame(
+    [[time.strftime("%H:%M:%S"), rpm, flow_rate, round(total_volume, 2)]],
+    columns=["Timestamp", "RPM", "Flow Rate (L/min)", "Volume (L)"]
+)
+st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+
+# --- Layout (3 Columns for Gauges) ---
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("▶️ Start"):
-        st.session_state.running = True
+    fig_rpm = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=rpm,
+        title={'text': "RPM"},
+        gauge={'axis': {'range': [0, 1500]},
+               'bar': {'color': "blue"},
+               'steps': [
+                   {'range': [0, 800], 'color': "lightgray"},
+                   {'range': [800, 1200], 'color': "lightgreen"},
+                   {'range': [1200, 1500], 'color': "orange"}]}
+    ))
+    st.plotly_chart(fig_rpm, use_container_width=True)
 
 with col2:
-    if st.button("⏹ Stop"):
-        st.session_state.running = False
+    fig_flow = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=flow_rate,
+        title={'text': "Flow Rate (L/min)"},
+        gauge={'axis': {'range': [0, 15]},
+               'bar': {'color': "green"},
+               'steps': [
+                   {'range': [0, 5], 'color': "lightgray"},
+                   {'range': [5, 10], 'color': "lightblue"},
+                   {'range': [10, 15], 'color': "orange"}]}
+    ))
+    st.plotly_chart(fig_flow, use_container_width=True)
 
 with col3:
-    if not st.session_state.history.empty:
-        # Create Excel file in memory
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            st.session_state.history.to_excel(writer, index=False, sheet_name="SensorData")
-        output.seek(0)
+    fig_vol = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=round(total_volume, 2),
+        title={'text': "Total Volume (L)"},
+        gauge={'axis': {'range': [0, 100]},
+               'bar': {'color': "purple"},
+               'steps': [
+                   {'range': [0, 25], 'color': "lightgray"},
+                   {'range': [25, 50], 'color': "lightgreen"},
+                   {'range': [50, 100], 'color': "lightblue"}]}
+    ))
+    st.plotly_chart(fig_vol, use_container_width=True)
 
-        st.download_button(
-            label="💾 Download Excel File",
-            data=output,
-            file_name="sensor_data.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+# --- Graph Section ---
+st.subheader("📈 Live RPM & Flow Rate Graph")
+chart_data = st.session_state.data.set_index("Timestamp")
+st.line_chart(chart_data[["RPM", "Flow Rate (L/min)"]])
 
-# ------------------------------
-# Metric Placeholders
-# ------------------------------
-rpm_placeholder = st.empty()
-flow_placeholder = st.empty()
-volume_placeholder = st.empty()
+# --- Display Total Volume ---
+st.metric("💧 Total Volume (L)", round(total_volume, 2))
 
-# ------------------------------
-# Chart Section
-# ------------------------------
-with st.expander("📈 Live Graph", expanded=True):
-    chart_placeholder = st.empty()
+# --- Download Excel ---
+excel_buffer = BytesIO()
+with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+    st.session_state.data.to_excel(writer, index=False, sheet_name="Sensor Data")
+excel_data = excel_buffer.getvalue()
 
-# ------------------------------
-# Auto-refresh every 2 seconds
-# ------------------------------
-st_autorefresh(interval=2000, key="data_refresh")
+st.download_button(
+    label="📥 Download Data as Excel",
+    data=excel_data,
+    file_name="rpm_flow_data.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
-# ------------------------------
-# Fetch and Display Data
-# ------------------------------
-try:
-    if st.session_state.running:
-        ref = db.reference("sensorData")
-        data = ref.get()
-
-        if data:
-            rpm = data.get("RPM", 0)
-            flow = data.get("FlowRate", 0)
-
-            # Calculate total volume (L/min → L/s)
-            current_time = time.time()
-            elapsed = current_time - st.session_state.prev_time
-            st.session_state.total_volume += (flow / 60) * elapsed
-            st.session_state.prev_time = current_time
-
-            # Display live metrics
-            rpm_placeholder.metric("Current RPM", f"{rpm}")
-            flow_placeholder.metric("Flow Rate", f"{flow:.2f} L/min")
-            volume_placeholder.metric("Total Volume", f"{st.session_state.total_volume:.2f} L")
-
-            # Append new data
-            st.session_state.history = pd.concat(
-                [
-                    st.session_state.history,
-                    pd.DataFrame(
-                        [
-                            {
-                                "Time": pd.Timestamp.now(),
-                                "RPM": rpm,
-                                "FlowRate": flow,
-                                "TotalVolume": st.session_state.total_volume,
-                            }
-                        ]
-                    ),
-                ],
-                ignore_index=True,
-            )
-
-            # Limit data for smoother plotting
-            if len(st.session_state.history) > 200:
-                st.session_state.history = st.session_state.history.tail(200)
-
-            # Plot graph
-            fig = px.line(
-                st.session_state.history,
-                x="Time",
-                y=["RPM", "FlowRate"],
-                labels={"value": "Value", "variable": "Parameter"},
-                title="Live RPM & Flow Rate",
-            )
-            chart_placeholder.plotly_chart(fig, use_container_width=True)
-
-        else:
-            st.warning("No data received yet from ESP32.")
-
-except Exception as e:
-    st.error(f"Error fetching data: {e}")
+# --- Auto Refresh Every 2 Seconds ---
+st.markdown(
+    """
+    <meta http-equiv="refresh" content="2">
+    """,
+    unsafe_allow_html=True
+)
