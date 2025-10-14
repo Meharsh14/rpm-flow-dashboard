@@ -1,56 +1,25 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, db
-import json, os, time, io
+import requests
+import json, time, io
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from streamlit_autorefresh import st_autorefresh
 
 # ------------------------------
-# Firebase Initialization
+# Firebase Realtime Database URL
 # ------------------------------
-@st.cache_resource
-def init_firebase():
-    db_url = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/"
-    cred = None
-
-    # --- Streamlit secrets (for Streamlit Cloud) ---
-    if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
-        firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
-        cred = credentials.Certificate(firebase_config)
-
-    # --- Local JSON file (for local testing) ---
-    elif os.path.exists("serviceAccountKey.json"):
-        cred = credentials.Certificate("serviceAccountKey.json")
-
-    elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-
-    else:
-        st.error("❌ No Firebase credentials found. Upload `serviceAccountKey.json` or add secrets.")
-        st.stop()
-
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(cred, {"databaseURL": db_url})
-
-    return db
-
+FIREBASE_URL = "https://rpm-flow-dashboard-default-rtdb.firebaseio.com/sensorData.json"
 
 # ------------------------------
-# Initialize Firebase
-# ------------------------------
-db = init_firebase()
-
-# ------------------------------
-# Streamlit UI Setup
+# Streamlit Setup
 # ------------------------------
 st.set_page_config(page_title="RPM & Flow Dashboard", layout="wide")
 st.title("📊 RPM & Flow Rate Dashboard")
-st.caption("Live data fetched from Firebase Realtime Database")
+st.caption("Live data fetched from Firebase Realtime Database (REST API)")
 
 # ------------------------------
-# Session State
+# Session State Initialization
 # ------------------------------
 if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0.0
@@ -77,7 +46,6 @@ with col2:
 
 with col3:
     if not st.session_state.history.empty:
-        # Create Excel file in memory
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             st.session_state.history.to_excel(writer, index=False, sheet_name="SensorData")
@@ -91,7 +59,7 @@ with col3:
         )
 
 # ------------------------------
-# Auto-refresh every 2 seconds (no scroll jump)
+# Auto-refresh every 2 seconds
 # ------------------------------
 st_autorefresh(interval=2000, key="data_refresh")
 
@@ -100,10 +68,10 @@ st_autorefresh(interval=2000, key="data_refresh")
 # ------------------------------
 try:
     if st.session_state.running:
-        ref = db.reference("sensorData")
-        data = ref.get()
+        response = requests.get(FIREBASE_URL)
+        if response.status_code == 200:
+            data = response.json() or {}
 
-        if data:
             rpm = data.get("RPM", 0)
             flow = data.get("FlowRate", 0)
 
@@ -175,7 +143,7 @@ try:
                 st.plotly_chart(fig, use_container_width=True)
 
         else:
-            st.warning("No data received yet from ESP32.")
+            st.error(f"❌ Firebase request failed (HTTP {response.status_code})")
 
 except Exception as e:
     st.error(f"Error fetching data: {e}")
