@@ -1,8 +1,9 @@
-streamlit
+wstreamlit
 firebase-admin
 plotly
 pandas
 streamlit-autorefresh
 openpyxl
 xlsxwriter
+requests 
 
