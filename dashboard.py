@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import time, io
+import time, io, re
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -20,6 +20,18 @@ URL_VOLUME = f"{BASE_URL}/TotalVolume.json"
 st.set_page_config(page_title="RPM & Flow Dashboard", layout="wide")
 st.title("📊 Washing Machine RPM & Flow Dashboard")
 st.caption("Live data fetched from Firebase Realtime Database")
+
+# ------------------------------
+# Utility Function
+# ------------------------------
+def safe_float(value):
+    """Convert mixed data (like 'Sent: 123') safely to float."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        match = re.search(r"[-+]?\d*\.?\d+", value)
+        return float(match.group()) if match else 0.0
+    return 0.0
 
 # ------------------------------
 # Session State Initialization
@@ -76,26 +88,23 @@ try:
     vol_resp = requests.get(URL_VOLUME)
 
     if all(r.status_code == 200 for r in [rpm_resp, flow_resp, vol_resp]):
-        rpm = rpm_resp.json() or 0
-        flow = flow_resp.json() or 0
-        total_volume = vol_resp.json() or 0
+        rpm = safe_float(rpm_resp.json())
+        flow = safe_float(flow_resp.json())
+        total_volume = safe_float(vol_resp.json())
 
-        # If running, compute new total volume
+        # --- Update total volume ---
+        current_time = time.time()
+        elapsed = current_time - st.session_state.prev_time
+
         if st.session_state.running:
-            current_time = time.time()
-            elapsed = current_time - st.session_state.prev_time
-            st.session_state.total_volume += (float(flow) / 60) * elapsed
-            st.session_state.prev_time = current_time
-        else:
-            # When stopped, just freeze total volume
-            current_time = time.time()
-            st.session_state.prev_time = current_time
+            st.session_state.total_volume += (flow / 60) * elapsed  # L/min → L/s
+        st.session_state.prev_time = current_time
 
-        # --- Append to history (even if stopped) ---
+        # --- Append to history ---
         new_row = {
             "Time": pd.Timestamp.now(),
-            "RPM": float(rpm),
-            "FlowRate": float(flow),
+            "RPM": rpm,
+            "FlowRate": flow,
             "TotalVolume": st.session_state.total_volume,
         }
         st.session_state.history = pd.concat(
@@ -115,7 +124,7 @@ try:
         with c1:
             fig_rpm = go.Figure(go.Indicator(
                 mode="gauge+number",
-                value=float(rpm),
+                value=rpm,
                 title={"text": "RPM"},
                 gauge={"axis": {"range": [0, 2000]}, "bar": {"color": "blue"}},
             ))
@@ -124,7 +133,7 @@ try:
         with c2:
             fig_flow = go.Figure(go.Indicator(
                 mode="gauge+number",
-                value=float(flow),
+                value=flow,
                 title={"text": "Flow Rate (L/min)"},
                 gauge={"axis": {"range": [0, 20]}, "bar": {"color": "green"}},
             ))
