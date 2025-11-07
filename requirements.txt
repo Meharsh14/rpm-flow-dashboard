@@ -2,8 +2,9 @@ wstreamlit
 firebase-admin
 plotly
 pandas
-streamlit-autorefresh
+streamlit_autorefresh
 openpyxl
 xlsxwriter
 requests 
+time
 
