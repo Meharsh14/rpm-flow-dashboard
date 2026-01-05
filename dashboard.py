@@ -1,112 +1,69 @@
 import streamlit as st
 import time
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
+import threading
 import serial
-from streamlit_autorefresh import st_autorefresh
+import pandas as pd
+import plotly.express as px
 
-# ---------------- SERIAL CONFIG ----------------
 SERIAL_PORT = "COM23"
 BAUD_RATE = 9600
 
-st.set_page_config(page_title="RPM & Flow Dashboard", layout="wide")
-st.title("📊 Washing Machine RPM, Flow & Volume Dashboard")
+# ---------------- SHARED DATA ----------------
+latest_data = {
+    "rpm": 0,
+    "flow": 0.0,
+    "volume": 0.0
+}
 
-# ---------------- SERIAL INIT ----------------
-@st.cache_resource
-def init_serial():
-    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-    time.sleep(2)
-    return ser
+# ---------------- SERIAL THREAD ----------------
+def serial_reader():
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+        time.sleep(2)
+    except Exception as e:
+        print("Serial error:", e)
+        return
 
-try:
-    ser = init_serial()
-except Exception as e:
-    st.error(f"❌ Serial error: {e}")
-    st.stop()
-
-# ---------------- SESSION STATE ----------------
-if "history" not in st.session_state:
-    st.session_state.history = pd.DataFrame(
-        columns=["Time", "RPM", "FlowRate", "TotalVolume"]
-    )
-
-# ---------------- AUTO REFRESH ----------------
-st_autorefresh(interval=1000, key="refresh")
-
-# ---------------- READ SERIAL (ALWAYS) ----------------
-try:
-    line = ser.readline().decode(errors="ignore").strip()
-except:
-    line = ""
-
-st.write("📡 RAW SERIAL:", line)  # DEBUG LINE (IMPORTANT)
-
-if line:
-    parts = line.split(",")
-
-    if len(parts) == 3:
+    while True:
         try:
-            rpm = float(parts[0])
-            flow = float(parts[1])
-            volume = float(parts[2])
+            line = ser.readline().decode(errors="ignore").strip()
+            if not line:
+                continue
 
-            st.session_state.history.loc[len(st.session_state.history)] = [
-                pd.Timestamp.now(),
-                rpm,
-                flow,
-                volume
-            ]
+            parts = line.split(",")
+            if len(parts) == 3:
+                latest_data["rpm"] = float(parts[0])
+                latest_data["flow"] = float(parts[1])
+                latest_data["volume"] = float(parts[2])
 
-            if len(st.session_state.history) > 300:
-                st.session_state.history = st.session_state.history.tail(300)
+        except:
+            pass
 
-        except ValueError:
-            st.warning("⚠ Parsing error")
+# Start thread ONCE
+if "serial_thread_started" not in st.session_state:
+    threading.Thread(target=serial_reader, daemon=True).start()
+    st.session_state.serial_thread_started = True
 
-# ---------------- DISPLAY ----------------
-if not st.session_state.history.empty:
-    latest = st.session_state.history.iloc[-1]
+# ---------------- STREAMLIT UI ----------------
+st.set_page_config(layout="wide")
+st.title("📊 Washing Machine Live Dashboard")
 
-    c1, c2, c3 = st.columns(3)
+st_autorefresh = st.experimental_rerun
+time.sleep(1)
 
-    with c1:
-        st.plotly_chart(
-            go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=latest["RPM"],
-                title={"text": "RPM"},
-                gauge={"axis": {"range": [0, 2000]}},
-            )),
-            use_container_width=True
-        )
+df = pd.DataFrame([{
+    "RPM": latest_data["rpm"],
+    "FlowRate": latest_data["flow"],
+    "TotalVolume": latest_data["volume"]
+}])
 
-    with c2:
-        st.plotly_chart(
-            go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=latest["FlowRate"],
-                title={"text": "Flow Rate (L/min)"},
-                gauge={"axis": {"range": [0, 20]}},
-            )),
-            use_container_width=True
-        )
+st.metric("RPM", latest_data["rpm"])
+st.metric("Flow Rate (L/min)", latest_data["flow"])
+st.metric("Total Volume (L)", latest_data["volume"])
 
-    with c3:
-        st.plotly_chart(
-            go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=latest["TotalVolume"],
-                title={"text": "Total Volume (L)"},
-            )),
-            use_container_width=True
-        )
-
-    fig = px.line(
-        st.session_state.history,
-        x="Time",
-        y=["RPM", "FlowRate"],
-        title="Live RPM & Flow Rate"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+fig = px.bar(
+    df,
+    y=["RPM", "FlowRate", "TotalVolume"],
+    title="Live Values"
+)
+st.plotly_chart(fig, use_container_width=True)
