@@ -67,3 +67,4 @@ fig = px.bar(
     title="Live Values"
 )
 st.plotly_chart(fig, use_container_width=True)
+
